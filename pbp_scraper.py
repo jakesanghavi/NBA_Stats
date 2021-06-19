@@ -5,7 +5,7 @@ import time
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
-# Game Id
+# Game Id starting string. This changes from year-to-year.
 game_id = "0022000001"
 
 # Headers for API Request
