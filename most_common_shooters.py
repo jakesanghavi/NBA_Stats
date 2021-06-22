@@ -26,7 +26,7 @@ SHOTS = {1:'Normal Jumper', 2:'Running Jumper', 3:'Hook Shot', 5:'Normal Layup',
         108:'Cutting Dunk', 109:'Driving Reverse Dunk', 110:'Running Reverse Dunk',
 }
 
-data = pd.read_csv("shot_types.csv")
+data = pd.read_csv("shot_count_by_type.csv")
 
 data = data.drop(columns=['indexer'])
 # data = data.dropna(how='any')
