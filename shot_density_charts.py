@@ -96,16 +96,6 @@ def draw_court(ax=None, color='black', lw=2, outer_lines=False):
        ax.add_patch(element)
    return ax
 
-# shot_chart_url = 'http://stats.nba.com/stats/shotchartdetail?CFID=33&CFPAR;'\
-#                 'AMS=2014-15&ContextFilter;=&ContextMeasure;=FGA&DateFrom;=&D;'\
-#                 'ateTo=&GameID;=&GameSegment;=&LastNGames;=0&LeagueID;=00&Loca;'\
-#                 'tion=&MeasureType;=Base&Month;=0&OpponentTeamID;=0&Outcome;=&'\
-#                 'PaceAdjust=N&PerMode;=PerGame&Period;=0&PlayerID;=201935&Plu;'\
-#                 'sMinus=N&PlayerPosition;=&Rank;=N&RookieYear;=&Season;=2014-15&Seas;'\
-#                 'onSegment=&SeasonType;=Regular+Season&TeamID;=0&VsConferenc;'\
-#                 'e=&VsDivision;=&mode;=Advanced&showDetails;=0&showShots;=1&sh;'\
-#                 'owZones=0'
-
 shot_chart_url = 'http://stats.nba.com/stats/shotchartdetail?CFID=33&CFPAR'\
                'AMS='+player_season+'&ContextFilter=&ContextMeasure=FGA&DateFrom=&D'\
                'ateTo=&GameID=&GameSegment=&LastNGames=0&LeagueID=00&Loca'\
@@ -135,31 +125,13 @@ for x in range(0, len(shot_df)):
     if booler != True:
         print(booler)
 
-# shot_df['Binary'] = np.nan
-
-# shot_df.to_csv(player_name+' shot_chart.csv', index=False)
-
-# we pass in the link to the image as the 1st argument
-# the 2nd argument tells urlretrieve what we want to scrape
-# pic = urllib.request.urlretrieve("http://stats.nba.com/media/players/230x185/"+player_id+".png",
-#                                 player_id+".png")
-
 pic = urllib.request.urlretrieve("http://ak-static.cms.nba.com/wp-content/uploads/headshots/nba/latest/260x190/"+player_id+".png", player_id+".png")
 
 sns.set_style("white")
 sns.set_color_codes()
-# create our jointplot
-# get our colormap for the main kde plot
-# Note we can extract a color from cmap to use for
-# the plots that lie on the side and top axes
 
 # cmap=plt.get_cmap("YlOrRd")
 cmap = plt.get_cmap('plasma_r')
-
-# n_levels sets the number of contour lines for the main kde plot
-# joint_shot_chart = sns.jointplot(shot_df.LOC_X, shot_df.LOC_Y, stat_func=None,
-#                                  kind='kde', space=0, color=cmap(0.1),
-#                                  cmap=cmap, n_levels=50)
 
 joint_shot_chart = sns.jointplot(shot_df.LOC_X, shot_df.LOC_Y, stat_func=None,
                                 kind='kde', space=100, color=cmap(0.1),
@@ -169,12 +141,9 @@ joint_shot_chart = sns.jointplot(shot_df.LOC_X, shot_df.LOC_Y, stat_func=None,
 
 joint_shot_chart.fig.set_size_inches(12,11)
 
-# A joint plot has 3 Axes, the first one called ax_joint
-# is the one we want to draw our court onto and adjust some other settings
 ax = joint_shot_chart.ax_joint
 draw_court(ax)
-# Adjust the axis limits and orientation of the plot in order
-# to plot half court, with the hoop by the top of the plot
+
 ax.set_xlim(-250, 250)
 ax.set_ylim(422.5, -47.5)
 # Get rid of axis labels and tick marks
@@ -186,16 +155,9 @@ ax.tick_params(labelbottom='off', labelleft='off')
 ax.set_title(player_name + ' Shot Density Chart \n' + player_season + ' Regular Season',
             y=1.0, fontsize=18, loc='left')
 
-# Add Harden's image to the top right
-# First create our OffSetImage by passing in our image
-# and set the zoom level to make the image small enough
-# to fit on our plot
 player_pic = plt.imread(pic[0])
 img = OffsetImage(player_pic, zoom=0.53)
-# Pass in a tuple of x,y coordinates to set_offset
-# to place the plot where you want, I just played around
-# with the values until I found a spot where I wanted
-# the image to be
+
 img.set_offset((725, 650))
 # add the image
 ax.add_artist(img)
