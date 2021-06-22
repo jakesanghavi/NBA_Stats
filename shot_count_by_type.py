@@ -31,4 +31,4 @@ for x in range(0, len(names)):
 print(shots)
 del shots[0]
 shots['indexer'] = shots.index.values
-shots.to_csv("shot_types.csv", index=False)
+shots.to_csv("shot_count_by_type.csv", index=False)
