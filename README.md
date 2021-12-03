@@ -1,5 +1,5 @@
 # NBA_Stats
-Repository for Scraping and Analayzing NBA Data
+Repository for Scraping and Analayzing NBA Data.
 
 **Example Outputs:**
 
