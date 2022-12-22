@@ -143,8 +143,8 @@ fig, ax = plt.subplots(figsize=(10, 10))
 
 # Scatter the data points
 scatter_data = depth_index.apply(scatter_row, axis=1)
-for x, y, size, color in scatter_data:
-    ax.scatter(x, y, s=size, alpha=0.7, color=color)
+for x, y, fga, color in scatter_data:
+    ax.scatter(x, y, s=fga, alpha=0.7, color=color)
 
 # Label the plot
 ax.set_xlabel('Average Shot Depth (Feet)', fontsize=14)
