@@ -1,26 +1,7 @@
 import pandas as pd
-from fuzzywuzzy import fuzz
+from unidecode import unidecode
 
 '''Credit to Ryan Davis for some of this code'''
-
-
-# Container for our player object. It needs to hold our IDs and the fields we will use for entity resolution
-class Player:
-    def __init__(self, name, nba_id, bbref_id, fga, rbd, ast):
-        self.name = name
-        self.nba_id = nba_id
-        self.bbref_id = bbref_id
-        self.fga = fga
-        self.rbd = rbd
-        self.ast = ast
-
-
-# Converts a basketball reference season to a season recognized by stats.nba.com (2019 -> 2018-19)
-def convert_bbref_season_to_nba_season(szn):
-    year = int(szn)
-    last_year = year - 1
-    last_two = szn[-2:]
-    return "{0}-{1}".format(last_year, last_two)
 
 
 # Basketball reference contains multiple rows for players who have played on multiple teams.
@@ -31,19 +12,24 @@ def deduplicate_traded_players(group):
     return group
 
 
-def check_names_fuzzy_match(row):
-    row["name_match"] = fuzz.partial_ratio(row["Player"], row["PLAYER_NAME"]) > 60
-    return row
+def remove_accents(a):
+    return unidecode(a)
 
 
 season = "2022"
 
 # Read our basketball_reference data
 bbref_data = pd.read_csv("basketball_reference_totals_{}.csv".format(season))
+bbref_data['Player'] = bbref_data['Player'].str.replace(".", "", regex=False)
+bbref_data["Player"] = bbref_data["Player"].apply(remove_accents)
+
+
 # read out stats.nba.com data
 nba_data = pd.read_csv("stats_nba_player_data_2021-22.csv")
 # convert the player id from an int to a string
 nba_data["PLAYER_ID"] = nba_data["PLAYER_ID"].astype(str)
+nba_data["PLAYER_NAME"] = nba_data["PLAYER_NAME"].str.replace(".", "", regex=False)
+nba_data["PLAYER_NAME"] = nba_data["PLAYER_NAME"].apply(remove_accents)
 
 # take the player name, id, team and fields we will use for deduplication from bbref data
 bbref_base_data = bbref_data[["Player", "id", "Pos", "Tm", "FGA", "Total Rebounds", "Assists"]].groupby(
