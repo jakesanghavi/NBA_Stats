@@ -3,11 +3,16 @@ import requests
 import time
 from wakepy import keepawake
 
+# I've had trouble scraping the final game of 2020, so I cut it off a game early
+id_getter = {2020: ("00220", (2, 1080)), 2021: ("00221", (2, 1231)), 2022: ("00222", (2, 942))}
+
+year = 2022
+
 # Prevent your computer from sleeping. The script can take a couple of hours to complete if scraping many games due
 # to the long wait time between each API call. On some systems, this stops the script from running.
 with keepawake(keep_screen_awake=False):
     # game_id starting string. This changes from year-to-year.
-    game_id = "0022200001"
+    game_id = id_getter[year][0] + "00001"
 
     # Headers for API request
     header_data = {
@@ -68,12 +73,12 @@ with keepawake(keep_screen_awake=False):
     # Extract the data from the first game. Subsequent games will be concatenated onto this dataframe.
     play_by_play = extract_data(play_by_play_url(game_id))
 
-    for x in range(2, 466):
+    for x in range(id_getter[year][1][0], id_getter[year][1][1]):
         # Required to have the website not block you. 2 seconds is the shortest sleep period that has worked for me.
         time.sleep(3)
 
         # Update the game id depending on x
-        game_id = "00222" + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+        game_id = id_getter[year][0] + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
         try:
             # Extract the pbp data
             holder_play_by_play = extract_data(play_by_play_url(game_id))
