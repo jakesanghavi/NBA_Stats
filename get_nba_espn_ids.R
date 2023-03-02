@@ -1,5 +1,3 @@
-# Credit to GitHub user djblechn-su for this code
-
 library(rvest)
 library(XML)
 library(httr)
@@ -11,8 +9,10 @@ team_abbs <- c('ATL', 'BKN', 'BOS', 'CHA', 'CLE', 'CHI', 'DAL', 'DEN', 'DET', 'G
               'IND', 'LAC', 'LAL', 'MEM', 'MIA', 'MIL', 'MIN', 'NO', 'NY', 'OKC', 'ORL', 'PHI',
               'PHX', 'POR', 'SA', 'SAC', 'TOR', 'UTAH', 'WSH')
 
+season <- 2022
+
 # Scrape Data for Seasons with ESPN RPM (2012 to 2020)
-seasons <- c(2010:2023)
+seasons <- c(season:season+1)
 urls <- {}
 n <- 0
 for(i in 1:length(team_abbs)){
@@ -53,13 +53,6 @@ get_id <- function(x){
   return (strsplit(x,"/")[[1]][8])
 }
 
-espn_links_all$id <- mapply(get_id, espn_links_all$espn_link)
-# Read an old file in and combine it. Only needed if you are updating your data to add new players
-espn_links_all2 <- read.csv("nba_ESPNIDs.csv")
-espn_links_all3 <- rbind(espn_links_all, espn_links_all2)
-espn_links_all3 <- as.data.frame(espn_links_all3[!duplicated(espn_links_all3$id),])
-write.csv(espn_links_all3, 'nba_ESPNIDs.csv', row.names = F)
-
-# If you do not want to do the above (no old file), comment out lines 58-61 and do the below.
-# espn_links_all <- as.data.frame(espn_links_all[!duplicated(espn_links_all$id),])
-# write.csv(espn_links_all, 'nba_ESPNIDs.csv', row.names = F)
+espn_links_all <- as.data.frame(espn_links_all[!duplicated(espn_links_all$id),])
+f_name <- paste0('nba_ESPNIDs_', season, '_', season+1, '.csv')
+write.csv(espn_links_all, f_name, row.names = F)
