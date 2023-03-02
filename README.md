@@ -11,4 +11,4 @@ Repository for Scraping and Analayzing NBA Data.
 Thank you to Ryan Davis for some of the code in the following documents: basketball_reference_scraper.py, nba_stats_scraper.py, and pbp_scraper.py. \
 Thank you to Savvas Tjortjoglou for help on the court design. \
 Thank you to GitHub user 903124 for his easy-RAPM.py code that is used for rapm.py in this repository. \
-Thank you to GitHub user djblechn-su for some of the code in nba_espnIds.R.
+Thank you to GitHub user djblechn-su for some of the code in get_nba_espn_ids.R.
