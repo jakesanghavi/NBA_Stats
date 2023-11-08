@@ -1,5 +1,6 @@
 from highlight_scraper_utils.py import *
 
+# Helpful dictionary of shot types
 SHOTS = {1: 'Normal Jumper', 2: 'Running Jumper', 3: 'Hook Shot', 5: 'Normal Layup',
          6: 'Driving Layup', 7: 'Normal Dunk', 9: 'Driving Dunk', 41: 'Running Layup', 43: 'Alley-Oop Layup',
          44: 'Reverse Layup', 47: 'Turnaround Jumper', 50: 'Running Dunk', 51: 'Reverse Dunk',
@@ -15,8 +16,11 @@ SHOTS = {1: 'Normal Jumper', 2: 'Running Jumper', 3: 'Hook Shot', 5: 'Normal Lay
          108: 'Cutting Dunk', 109: 'Driving Reverse Dunk', 110: 'Running Reverse Dunk'
          }
 
+# Insert your PBP data path here
+pbp_path = ""
+
 # Read the dataframe from your specified year
-df = read_data(2023)
+df = read_data(pbp_path)
 
 game_start=22300115
 game_end=22300127
@@ -25,8 +29,12 @@ player_name='Luka Doncic'
 # HELPFUL SHOT TYPES: [80, 104] - stepback, [43, 52, 100, 106] - alley-oop
 shot_types = [80, 104]
 
+# Specify the paths for your player ids and the output
+player_ids_path = ""
+output_path = ""
+
 # Get the video links for your desired plays
-df = get_links(df, game_start=game_start, game_end=game_end, player_name=player_name, shot_types=shot_types)
+df = get_links(df, output_path, player_ids_path, game_start=game_start, game_end=game_end, player_name=player_name, shot_types=shot_types)
 
 # Write the video for each play to a file. Save the names of these files so they can be deleted later
 files = video_writer(df)
