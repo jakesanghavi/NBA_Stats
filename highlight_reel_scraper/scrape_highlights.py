@@ -29,7 +29,7 @@ shot_types = [80, 104]
 df = get_links(df, game_start=game_start, game_end=game_end, player_name=player_name, shot_types=shot_types)
 
 # Write the video for each play to a file. Save the names of these files so they can be deleted later
-files = video_writer()
+files = video_writer(df)
 
 # Stitch the videos together using FFMPEG. The saved file will be called 'merged_video.mp4'
 video_stitcher()
