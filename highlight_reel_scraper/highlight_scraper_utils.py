@@ -27,20 +27,20 @@ SHOTS = {1: 'Normal Jumper', 2: 'Running Jumper', 3: 'Hook Shot', 5: 'Normal Lay
          108: 'Cutting Dunk', 109: 'Driving Reverse Dunk', 110: 'Running Reverse Dunk'
          }
 
-def read_data(year):
-    df = pd.read_csv(f"/Users/jakesanghavi/PycharmProjects/NBA/Data/PBP/{year}_reg_pbp.csv", dtype={'GAME_ID': str})
+def read_data(pbppath):
+    df = pd.read_csv(pbp_path, dtype={'GAME_ID': str})
     df = df.loc[df['EVENTMSGTYPE'] == 1]
     df['int_gid'] = df['GAME_ID'].astype(int)
     
     return df
 
-def get_links(df, game_start=None, game_end=None, player_name=None, shot_types=None):
+def get_links(df, output_path, player_ids_path, game_start=None, game_end=None, player_name=None, shot_types=None):
     # reduce games
     if game_start is not None and game_end is not None:
         df = df.loc[(df['int_gid'] >= 22300115) & (df['int_gid'] <= 22300127)]
     df['time'] = df['WCTIMESTRING'].apply(lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1].split()[0]) + (12 * 60 if x.split()[1] == 'AM' else 0))
 
-    player_names = pd.read_csv(f"/Users/jakesanghavi/PycharmProjects/NBA/Data/ids/player_id_matches_{year}-{year+1}.csv")
+    player_names = pd.read_csv(player_ids_path)
 
     if player_name is not None:
         player_id = player_names.loc[player_names['bbref_name'] == player_name.lower()]
@@ -70,10 +70,10 @@ def get_links(df, game_start=None, game_end=None, player_name=None, shot_types=N
     df_small['video_link'] = df_small['video_link'].str.replace(' ', '%20')
     df_small['video_link'] = df_small['video_link'].str.replace("'", '%27')
 
-    df_small.to_csv("/Users/jakesanghavi/PycharmProjects/NBA/Data/highlight_reel.csv", index=False)
+    df_small.to_csv(output_path, index=False)
     return df_small
 
-def video_writer():
+def video_writer(df):
     DEAD_LINK = 'https://videos.nba.com/nba/static/missing.mp4'
 
     # Depending on your current version of Chrome, the regular install may not work.
@@ -81,7 +81,6 @@ def video_writer():
     # driver = webdriver.Chrome(ChromeDriverManager().install())
     driver = webdriver.Chrome(ChromeDriverManager(driver_version='119.0.6045.104').install())
 
-    df = pd.read_csv("/Users/jakesanghavi/PycharmProjects/NBA/Data/highlight_reel.csv")
     file_list = []
 
     for x in range(0, len(df)):
