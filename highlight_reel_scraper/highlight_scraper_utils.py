@@ -115,7 +115,7 @@ def video_writer(df):
         # As long as the video exists, write it to a local MP4 file
         if video_src != DEAD_LINK and video_src != '':
             highlight = requests.get(video_src)
-            # Save all the video content to a single file
+            # Save all the videos to their own MP4 files
             filename = video_src.split('/')[-1]
             with open(filename, 'wb') as file:
                 file_list.append(filename)
@@ -129,7 +129,7 @@ def video_writer(df):
         for video_file in file_list:
             filelist.write(f"file '{video_file}'\n")
 
-# This function stitches all of the videos together into one called 'merged_video.mp4'
+# This function stitches all of the videos together into a single file called 'merged_video.mp4'
 def video_stitcher():
     # Bash command to stitch the videos together
     command = 'ffmpeg -f concat -safe 0 -i filelist.txt -c copy merged_video.mp4'
