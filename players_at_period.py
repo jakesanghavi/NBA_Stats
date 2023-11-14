@@ -85,13 +85,18 @@ def extract_data(url):
 
 # Find players who started each period on the court
 def players_at_period(game_id):
+    # Find the game just at your specified game ID.
     play_by_play = PLAY_BY_PLAY.loc[PLAY_BY_PLAY['GAME_ID'] == int(game_id)]
+
+    # Some games have EVENTNUM out of order. Using the index values avoids this.
     play_by_play['EVENTNUM'] = play_by_play.index.values
 
+    # Get only substitution events
     substitutionsOnly = play_by_play[play_by_play['EVENTMSGTYPE'] == 8][
         ['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
     substitutionsOnly.columns = ['PERIOD', 'EVENTNUM', 'OUT', 'IN']
 
+    # Break into subbing in and out
     subs_in = split_subs(substitutionsOnly, 'IN')
     subs_out = split_subs(substitutionsOnly, 'OUT')
 
