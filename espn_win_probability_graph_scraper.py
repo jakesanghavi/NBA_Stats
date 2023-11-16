@@ -15,15 +15,13 @@ import csv
 import time
 from wakepy import keepawake
 
-pd.set_option('display.max_colwidth', None)
-pd.set_option('display.max_rows', 50)
-pd.options.mode.chained_assignment = None
-
+# Specify the year you are interested in and the days of the year
 year = 2023
 game_dates = []
 months = ['0' +  str(x) if len(str(x)) == 1 else str(x) for x in range(10,12)]
 days = ['0' +  str(x) if len(str(x)) == 1 else str(x) for x in range(1,32)]
 
+# Add a date range
 for m in months:
     for d in days:
         link = str(year) + m + d
