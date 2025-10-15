@@ -1,6 +1,23 @@
 # NBA_Stats
 Repository for Scraping and Analayzing NBA Data.
 
+### Dependencies
+```
+bs4
+matplotlib
+numpy
+pandas
+PIL
+pyautogui
+requests
+seaborn
+selenium
+sklearn
+unidecode
+urllib3
+wakepy
+```
+
 **Example Outputs:**
 
 <img src="https://user-images.githubusercontent.com/57878447/144542999-3d0b55b9-e7a2-4671-9291-7227b6925015.png" alt="Image 1" width=500/>
