@@ -305,8 +305,6 @@ def pap_loop(year, pbp):
                     if existing_data is not None:
                         existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
                         existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
-                        existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
-                        existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
                         all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
@@ -326,6 +324,9 @@ def pap_loop(year, pbp):
                     error_counter = 5
                     continue
 
+                holder_pap['TEAM_1_PLAYERS'] = holder_pap['TEAM_1_PLAYERS'].map(str)
+                holder_pap['TEAM_2_PLAYERS'] = holder_pap['TEAM_2_PLAYERS'].map(str)
+
                 # Add this data on to the existing dataframe
                 new_data_frames.append(holder_pap[columns])
                 error_counter = 0
@@ -340,8 +341,6 @@ def pap_loop(year, pbp):
     if new_data_frames:
         combined_new = pd.concat(new_data_frames, ignore_index=True)
         if existing_data is not None:
-            existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
-            existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
             existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
             existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
             existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
