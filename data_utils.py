@@ -303,9 +303,15 @@ def pap_loop(year, pbp):
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
                     if existing_data is not None:
+                        existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+                        existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
+                        existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+                        existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
                         all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
+                    all_data['TEAM_1_PLAYERS'] = all_data['TEAM_1_PLAYERS'].map(ast.literal_eval)
+                    all_data['TEAM_2_PLAYERS'] = all_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
                     all_data.drop_duplicates(inplace=True)
                     save_file(all_data, pap_file_dir, pap_file_short)
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
@@ -331,14 +337,13 @@ def pap_loop(year, pbp):
                 error_counter += 1
                 print("Value Error/Missing Game")
 
-    existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
-    existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
-    existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
-    existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
-
     if new_data_frames:
         combined_new = pd.concat(new_data_frames, ignore_index=True)
         if existing_data is not None:
+            existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+            existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
+            existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+            existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
             existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
         else:
             existing_data = combined_new[columns]
