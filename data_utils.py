@@ -249,7 +249,12 @@ def players_at_period(pbp, game_id):
         if boxscore is None:
             print(f"Error getting game {game_id}")
             return None
-        boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ID']]
+        boxscore_players = extract_data(boxscore)
+        if boxscore_players is None:
+            print(f"Error getting game {game_id}")
+            return None
+        else:
+            boxscore_players = boxscore_players[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ID']]
         boxscore_players['PERIOD'] = period
 
         players_subbed_in_at_period = players_subbed_in_at_each_period[
