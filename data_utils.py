@@ -145,7 +145,7 @@ def scrape_nba_pbp(year):
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
                     if existing_data is not None:
-                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True)
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
                     all_data.drop_duplicates(inplace=True)
@@ -178,7 +178,7 @@ def scrape_nba_pbp(year):
         if new_data_frames:
             combined_new = pd.concat(new_data_frames, ignore_index=True)
             if existing_data is not None:
-                existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True)
+                existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
             else:
                 existing_data = combined_new[columns]
 
@@ -220,7 +220,7 @@ def frame_to_row(df):
 
 def players_at_period(pbp, game_id):
     play_by_play = pbp.loc[pbp['GAME_ID'] == int(game_id)]
-    play_by_play['EVENTNUM'] = play_by_play.index.values
+    play_by_play.loc[:, 'EVENTNUM'] = play_by_play.index.values
 
     substitutionsOnly = play_by_play[play_by_play['EVENTMSGTYPE'] == 8][
         ['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
@@ -266,39 +266,71 @@ def pap_loop(year, pbp):
     beginning_string, id1, id2 = get_nba_game_ids(year)
     game_id = beginning_string + "00001"
 
-    pap = players_at_period(pbp, game_id)
-    for x in range(id1, id2):
-        time.sleep(2)
-        game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
-        try:
-            # Extract the pbp data
-            holder_pap = players_at_period(pbp, game_id)
-
-            # Add this data on to the existing dataframe
-            pap = pd.concat([pap, holder_pap]).reset_index()[
-                ["GAME_ID", "TEAM_ID_1", "TEAM_1_PLAYERS", "TEAM_ID_2", "TEAM_2_PLAYERS", "PERIOD"]]
-
-        # Catch the case in which the URL doesn't exist (sometimes the game id skips a number)
-        except requests.exceptions.JSONDecodeError as e:
-            print(e)
-            print("Game does not exist")
-        except ValueError:
-            print("Value Error/Missing Game")
-
     pap_file_dir = Path.cwd() / "DataPack"
     pap_file_short = f"pap_{year}.csv"
     pap_file_full = pap_file_dir / pap_file_short
 
-    pap2 = pd.read_csv(pap_file_full, index_col=False)
-    pap['TEAM_1_PLAYERS'] = pap['TEAM_1_PLAYERS'].map(str)
-    pap['TEAM_2_PLAYERS'] = pap['TEAM_2_PLAYERS'].map(str)
-    pap2['TEAM_1_PLAYERS'] = pap2['TEAM_1_PLAYERS'].map(str)
-    pap2['TEAM_2_PLAYERS'] = pap2['TEAM_2_PLAYERS'].map(str)
-    pap = pd.concat([pap2, pap], ignore_index=True).drop_duplicates()
-    pap['TEAM_1_PLAYERS'] = pap['TEAM_1_PLAYERS'].map(ast.literal_eval)
-    pap['TEAM_2_PLAYERS'] = pap['TEAM_2_PLAYERS'].map(ast.literal_eval)
+    existing_data = None
 
-    pap = pap.reset_index()
+    new_data_frames = []
+    columns = ["GAME_ID", "TEAM_ID_1", "TEAM_1_PLAYERS", "TEAM_ID_2", "TEAM_2_PLAYERS", "PERIOD"]
+    error_counter = 0
+
+    if os.path.isfile(pap_file_full):
+        existing_data = pd.read_csv(pap_file_full)[columns]
+        id1 = existing_data['GAME_ID'].astype(str).str[-5:].astype(int).max() + 1
+
+    if existing_data is None:
+        existing_data = players_at_period(pbp, game_id)[columns]
+        id1 += 1
+
+    with keep.presenting():
+        for x in range(id1, id2):
+            if error_counter >= 5:
+                if new_data_frames:
+                    combined_new = pd.concat(new_data_frames, ignore_index=True)
+                    if existing_data is not None:
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                    else:
+                        all_data = combined_new[columns]
+                    all_data.drop_duplicates(inplace=True)
+                    save_file(all_data, pap_file_dir, pap_file_short)
+                raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
+                                 "Writing current data and stopping...")
+    
+            time.sleep(2)
+            game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            try:
+                # Extract the pbp data
+                holder_pap = players_at_period(pbp, game_id)
+    
+                # Add this data on to the existing dataframe
+                new_data_frames.append(holder_pap[columns])
+                error_counter = 0
+            # Catch the case in which the URL doesn't exist (sometimes the game id skips a number)
+            except requests.exceptions.JSONDecodeError:
+                error_counter += 1
+                print("Game does not exist")
+            except ValueError:
+                error_counter += 1
+                print("Value Error/Missing Game")
+
+    existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+    existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
+    existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
+    existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
+
+    if new_data_frames:
+        combined_new = pd.concat(new_data_frames, ignore_index=True)
+        if existing_data is not None:
+            existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+        else:
+            existing_data = combined_new[columns]
+
+    existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(ast.literal_eval)
+    existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
+
+    pap = existing_data.reset_index()
     pap = pap.drop(columns=['level_0', 'index'], errors='ignore')
 
     save_file(pap, pap_file_dir, pap_file_short)
@@ -591,46 +623,69 @@ def possession_parser_loop(year, big_pbp, big_pap):
     x = 1
     game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
 
-    poss = pos_parser(big_pbp, big_pap, game_id)
+    dirname = Path.cwd() / "DataPack"
+    filename = f"full_reg_pbp_{year}.csv"
+    full_filename = dirname / filename
 
-    poss['possession_id'] = poss.index.values + 1
-
-    for x in range(id1, id2):
-        # Update the game id depending on x
-        game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
-        try:
-            # Extract the pbp data
-            holder_poss = pos_parser(big_pbp, big_pap, game_id)
-            holder_poss['possession_id'] = holder_poss.index.values + 1
-
-            # Add this data on to the existing dataframe
-            poss = pd.concat([poss, holder_poss]).reset_index()[
-                ['GAME_ID', 'EVENTNUM', 'team1_id', 'team1_player1', 'team1_player2',
+    existing_data = None
+    new_data_frames = []
+    columns = ['GAME_ID', 'EVENTNUM', 'team1_id', 'team1_player1', 'team1_player2',
                  'team1_player3', 'team1_player4', 'team1_player5', 'team2_id',
                  'team2_player1', 'team2_player2', 'team2_player3', 'team2_player4',
                  'team2_player5', 'period', 'possession_start',
-                 'possession_end', 'team1_points', 'team2_points', 'possession_team', 'possession_id']]
+                 'possession_end', 'team1_points', 'team2_points', 'possession_team', 'possession_id']
+    error_counter = 0
 
-        # Catch the case in which the URL doesn't exist (sometimes the game id skips a number)
-        except IndexError:
-            print(f"IE: Game {game_id} does not exist")
-        except ValueError:
-            print(f"VE: Game {game_id} does not exist")
-        except KeyError:
-            print(f"KE: Game  {game_id}does not exist")
+    if os.path.isfile(full_filename):
+        existing_data = pd.read_csv(full_filename)[columns]
+        id1 = existing_data['GAME_ID'].astype(str).str[-5:].astype(int).max() + 1
+
+    if existing_data is None:
+        existing_data = players_at_period(big_pbp, game_id)[columns]
+        id1 += 1
+
+    with keep.presenting():
+        for x in range(id1, id2):
+            if error_counter >= 5:
+                if new_data_frames:
+                    combined_new = pd.concat(new_data_frames, ignore_index=True)
+                    if existing_data is not None:
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                    else:
+                        all_data = combined_new[columns]
+                    all_data.drop_duplicates(inplace=True)
+                    save_file(all_data, dirname, filename)
+                raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
+                                 "Writing current data and stopping...")
+            # Update the game id depending on x
+            game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            try:
+                # Extract the pbp data
+                holder_poss = pos_parser(big_pbp, big_pap, game_id)
+                holder_poss['possession_id'] = holder_poss.index.values + 1
+                new_data_frames.append(holder_poss.reset_index()[columns])
+    
+            # Catch the case in which the URL doesn't exist (sometimes the game id skips a number)
+            except IndexError:
+                print(f"IE: Game {game_id} does not exist")
+            except ValueError:
+                print(f"VE: Game {game_id} does not exist")
+            except KeyError:
+                print(f"KE: Game {game_id} does not exist")
+
+    if new_data_frames:
+        combined_new = pd.concat(new_data_frames, ignore_index=True)
+        if existing_data is not None:
+            existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+        else:
+            existing_data = combined_new[columns]
 
     # Merge our dataframes together
-    poss = big_pbp.merge(poss, how="left", on=["GAME_ID", "EVENTNUM"])
+    poss = big_pbp.merge(existing_data, how="left", on=["GAME_ID", "EVENTNUM"])
 
     # Forward fill the NA values for the players who are on the court
-    poss[['team1_id', 'team1_player1', 'team1_player2',
-          'team1_player3', 'team1_player4', 'team1_player5', 'team2_id',
-          'team2_player1', 'team2_player2', 'team2_player3', 'team2_player4',
-          'team2_player5', 'period', 'possession_team']] = \
-        poss[['team1_id', 'team1_player1', 'team1_player2',
-              'team1_player3', 'team1_player4', 'team1_player5', 'team2_id',
-              'team2_player1', 'team2_player2', 'team2_player3', 'team2_player4',
-              'team2_player5', 'period', 'possession_team']].fillna(method="ffill")
+    poss[columns] = \
+        poss[columns].fillna(method="ffill")
 
     poss = poss.drop_duplicates()
 
@@ -649,9 +704,6 @@ def possession_parser_loop(year, big_pbp, big_pap):
             poss.at[i, 'team1_points'] = poss.at[i - 1, 'team1_points']
             poss.at[i, 'team2_points'] = poss.at[i - 1, 'team2_points']
             poss.at[i, 'possession_id'] = poss.at[i - 1, 'possession_id']
-
-    dirname = Path.cwd() / "DataPack"
-    filename = f"full_reg_pbp_{year}.csv"
 
     save_file(poss, dirname, filename)
 
