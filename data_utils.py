@@ -246,10 +246,10 @@ def players_at_period(pbp, game_id):
         low = calculate_time_at_period(period) + 5
         high = calculate_time_at_period(period + 1) - 5
         boxscore = advanced_boxscore_url(game_id, low, high)
-        boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ID']]
-        if boxscore_players is None:
+        if boxscore is None:
             print(f"Error getting game {game_id}")
             return None
+        boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ID']]
         boxscore_players['PERIOD'] = period
 
         players_subbed_in_at_period = players_subbed_in_at_each_period[
