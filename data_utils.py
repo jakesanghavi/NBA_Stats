@@ -74,15 +74,20 @@ def extract_data(url):
     # I keep this print statement in just so I can see my progress
     print(url)
     # Call to the url
-    r = requests.get(url, headers=header_data)
-    # Convert the data to JSON format
-    resp = r.json()
-    # Create our dataframe from this JSON
-    results = resp['resultSets'][0]
-    headers = results['headers']
-    rows = results['rowSet']
-    frame = pd.DataFrame(rows)
-    frame.columns = headers
+    try:
+        r = requests.get(url, headers=header_data, timeout=10)
+        # Convert the data to JSON format
+        resp = r.json()
+        # Create our dataframe from this JSON
+        results = resp['resultSets'][0]
+        headers = results['headers']
+        rows = results['rowSet']
+        frame = pd.DataFrame(rows)
+        frame.columns = headers
+
+    except requests.exceptions.Timeout:
+        print("Request timed out. Skipping...")
+        return None
     return frame
 
 
@@ -242,6 +247,9 @@ def players_at_period(pbp, game_id):
         high = calculate_time_at_period(period + 1) - 5
         boxscore = advanced_boxscore_url(game_id, low, high)
         boxscore_players = extract_data(boxscore)[['PLAYER_NAME', 'PLAYER_ID', 'TEAM_ID']]
+        if boxscore_players is None:
+            print(f"Error getting game {game_id}")
+            return None
         boxscore_players['PERIOD'] = period
 
         players_subbed_in_at_period = players_subbed_in_at_each_period[
@@ -296,14 +304,17 @@ def pap_loop(year, pbp):
                     all_data.drop_duplicates(inplace=True)
                     save_file(all_data, pap_file_dir, pap_file_short)
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
-                                 "Writing current data and stopping...")
-    
+                                 f"Max gid hit: {id1-1}. Writing current data and stopping...")
+
             time.sleep(2)
             game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
             try:
                 # Extract the pbp data
                 holder_pap = players_at_period(pbp, game_id)
-    
+                if holder_pap is None:
+                    error_counter = 5
+                    continue
+
                 # Add this data on to the existing dataframe
                 new_data_frames.append(holder_pap[columns])
                 error_counter = 0
@@ -664,7 +675,7 @@ def possession_parser_loop(year, big_pbp, big_pap):
                 holder_poss = pos_parser(big_pbp, big_pap, game_id)
                 holder_poss['possession_id'] = holder_poss.index.values + 1
                 new_data_frames.append(holder_poss.reset_index()[columns])
-    
+
             # Catch the case in which the URL doesn't exist (sometimes the game id skips a number)
             except IndexError:
                 print(f"IE: Game {game_id} does not exist")
