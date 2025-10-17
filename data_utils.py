@@ -316,9 +316,9 @@ def pap_loop(year, pbp):
                         all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
+                    all_data.drop_duplicates(inplace=True)
                     all_data['TEAM_1_PLAYERS'] = all_data['TEAM_1_PLAYERS'].map(ast.literal_eval)
                     all_data['TEAM_2_PLAYERS'] = all_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
-                    all_data.drop_duplicates(inplace=True)
                     save_file(all_data, pap_file_dir, pap_file_short)
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
                                  f"Max gid hit: {id1-1}. Writing current data and stopping...")
@@ -355,6 +355,7 @@ def pap_loop(year, pbp):
         else:
             existing_data = combined_new[columns]
 
+    existing_data = existing_data.drop_duplicates()
     existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(ast.literal_eval)
     existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
 
