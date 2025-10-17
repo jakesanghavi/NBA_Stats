@@ -59,7 +59,7 @@ def play_by_play_url(game_id_str):
     return f"https://stats.nba.com/stats/playbyplayv2/?gameId={game_id_str}&startPeriod=0&endPeriod=14"
 
 
-def extract_data(url):
+def extract_data(url, error_counter=0):
     """
     Extract the data stored at a specific URL
     Parameters
@@ -86,7 +86,11 @@ def extract_data(url):
         frame.columns = headers
 
     except requests.exceptions.Timeout:
-        print("Request timed out. Skipping...")
+        error_counter += 1
+        if error_counter < 5:
+            extract_data(url, error_counter)
+        else:
+            print("Request timed out. Skipping...")
         return None
     return frame
 
@@ -165,6 +169,10 @@ def scrape_nba_pbp(year):
             try:
                 # Extract the pbp data
                 holder_play_by_play = extract_data(play_by_play_url(game_id))
+                if holder_play_by_play is None:
+                    x -= 1
+                    error_counter += 1
+                    continue
                 new_data_frames.append(holder_play_by_play[columns])
                 error_counter = 0
 
@@ -315,7 +323,7 @@ def pap_loop(year, pbp):
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
                                  f"Max gid hit: {id1-1}. Writing current data and stopping...")
 
-            time.sleep(2)
+            time.sleep(3)
             game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
             try:
                 # Extract the pbp data
