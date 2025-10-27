@@ -277,7 +277,8 @@ def scrape_nba_pbp(year):
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
                     if existing_data is not None:
-                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                             ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
                     all_data.drop_duplicates(inplace=True)
@@ -317,7 +318,8 @@ def scrape_nba_pbp(year):
         if new_data_frames:
             combined_new = pd.concat(new_data_frames, ignore_index=True)
             if existing_data is not None:
-                existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                existing_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                          ignore_index=True).drop_duplicates()
             else:
                 existing_data = combined_new[columns]
 
@@ -441,7 +443,8 @@ def pap_loop(year, pbp):
                     if existing_data is not None:
                         existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
                         existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
-                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                             ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
                     all_data.drop_duplicates(inplace=True)
@@ -449,7 +452,7 @@ def pap_loop(year, pbp):
                     all_data['TEAM_2_PLAYERS'] = all_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
                     save_file(all_data, pap_file_dir, pap_file_short)
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
-                                 f"Max gid hit: {x-1}. Writing current data and stopping...")
+                                 f"Max gid hit: {x - 1}. Writing current data and stopping...")
 
             time.sleep(3)
             game_id = ids[x]
@@ -479,7 +482,8 @@ def pap_loop(year, pbp):
         if existing_data is not None:
             existing_data['TEAM_1_PLAYERS'] = existing_data['TEAM_1_PLAYERS'].map(str)
             existing_data['TEAM_2_PLAYERS'] = existing_data['TEAM_2_PLAYERS'].map(str)
-            existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+            existing_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                      ignore_index=True).drop_duplicates()
         else:
             existing_data = combined_new[columns]
 
@@ -497,6 +501,7 @@ def pap_loop(year, pbp):
 # Players at the start of each period are stored as a string in the dataframe column
 # We need to parse out that string into an array of player Ids
 def split_row(list_str):
+    list_str = str(list_str)
     return [x.replace('[', '').replace(']', '').strip() for x in list_str.split(',')]
 
 
@@ -571,7 +576,8 @@ What ends a possession?
 
 
 def is_end_of_possession(ind, row, rows):
-    return pbp_utils.is_turnover(row) or (pbp_utils.is_last_free_throw_made(ind, row, rows)) or pbp_utils.is_defensive_rebound(ind, row, rows) or \
+    return pbp_utils.is_turnover(row) or (
+        pbp_utils.is_last_free_throw_made(ind, row, rows)) or pbp_utils.is_defensive_rebound(ind, row, rows) or \
            pbp_utils.is_make_and_not_and_1(ind, row, rows) or pbp_utils.is_end_of_period(row)
 
 
@@ -667,49 +673,40 @@ def parse_possession(possession):
     possession_start = min(times_of_events)
     possession_end = max(times_of_events)
     points = count_points(possession)
-    period = possession[0][pbp_utils.period_column]
+    event_data = possession[0]
+    period = event_data[pbp_utils.period_column]
 
-    team1_id = possession[0]['TEAM1_ID']
-    team1_player1 = possession[0]['TEAM1_PLAYER1']
-    team1_player2 = possession[0]['TEAM1_PLAYER2']
-    team1_player3 = possession[0]['TEAM1_PLAYER3']
-    team1_player4 = possession[0]['TEAM1_PLAYER4']
-    team1_player5 = possession[0]['TEAM1_PLAYER5']
+    team1_id = event_data['TEAM1_ID']
+    team1_players = []
+    for i in range(1, 6):
+        player_key = f'TEAM1_PLAYER{i}'
+        team1_players.append(event_data.get(player_key))
     team1_points = points[team1_id] if team1_id in points else 0
 
-    team2_id = possession[0]['TEAM2_ID']
-    team2_player1 = possession[0]['TEAM2_PLAYER1']
-    team2_player2 = possession[0]['TEAM2_PLAYER2']
-    team2_player3 = possession[0]['TEAM2_PLAYER3']
-    team2_player4 = possession[0]['TEAM2_PLAYER4']
-    team2_player5 = possession[0]['TEAM2_PLAYER5']
+    team2_id = event_data['TEAM2_ID']
+    team2_players = []
+    for i in range(1, 6):
+        player_key = f'TEAM2_PLAYER{i}'
+        team2_players.append(event_data.get(player_key))
     team2_points = points[team2_id] if team2_id in points else 0
 
     possession_team = determine_possession_team(possession[-1], team1_id, team2_id)
-    game_id = possession[0]['GAME_ID']
-    event_num = possession[0]['EVENTNUM']
+    game_id = event_data['GAME_ID']
+    event_num = event_data['EVENTNUM']
 
     return {
         'GAME_ID': game_id,
         'EVENTNUM': event_num,
-        'team1_id': team1_id,
-        'team1_player1': team1_player1,
-        'team1_player2': team1_player2,
-        'team1_player3': team1_player3,
-        'team1_player4': team1_player4,
-        'team1_player5': team1_player5,
-        'team2_id': team2_id,
-        'team2_player1': team2_player1,
-        'team2_player2': team2_player2,
-        'team2_player3': team2_player3,
-        'team2_player4': team2_player4,
-        'team2_player5': team2_player5,
+        'team_1_id': team1_id,
+        'team_1_players': team1_players,
+        'team_2_id': team2_id,
+        'team_2_players': team2_players,
         'game_id': game_id,
         'period': period,
         'possession_start': possession_start,
         'possession_end': possession_end,
-        'team1_points': team1_points,
-        'team2_points': team2_points,
+        'team_1_points': team1_points,
+        'team_2_points': team2_points,
         'possession_team': possession_team
     }
 
@@ -735,7 +732,7 @@ def pos_parser(big_pbp, big_pap, game_id):
     # Pre-populate the map with the players at the start of each period
     for row in players_at_start_of_period.iterrows():
         sub_map[row[1][pbp_utils.period_column]] = {row[1]['TEAM_ID_1']: split_row(row[1]['TEAM_1_PLAYERS']),
-                                          row[1]['TEAM_ID_2']: split_row(row[1]['TEAM_2_PLAYERS'])}
+                                                    row[1]['TEAM_ID_2']: split_row(row[1]['TEAM_2_PLAYERS'])}
 
     # convert dataframe into a list of rows. I know there is a better way to do this,
     # but this is the first thing I thought of.
@@ -784,11 +781,9 @@ def possession_parser_loop(year, big_pbp, big_pap):
 
     existing_data = None
     new_data_frames = []
-    columns = ['GAME_ID', 'EVENTNUM', 'team1_id', 'team1_player1', 'team1_player2',
-                 'team1_player3', 'team1_player4', 'team1_player5', 'team2_id',
-                 'team2_player1', 'team2_player2', 'team2_player3', 'team2_player4',
-                 'team2_player5', 'period', 'possession_start',
-                 'possession_end', 'team1_points', 'team2_points', 'possession_team', 'possession_id']
+    columns = ['GAME_ID', 'EVENTNUM', 'team_1_id', 'team_1_players', 'team_2_id',
+               'team_2_players', 'period', 'possession_start',
+               'possession_end', 'team_1_points', 'team_2_points', 'possession_team', 'possession_id']
     error_counter = 0
 
     if os.path.isfile(full_filename):
@@ -798,7 +793,8 @@ def possession_parser_loop(year, big_pbp, big_pap):
         ids = [gid for gid in ids if gid not in existing_game_ids]
 
     if existing_data is None:
-        existing_data = players_at_period(big_pbp, game_id)[columns]
+        existing_data = pos_parser(big_pbp, big_pap, game_id)
+        existing_data['possession_id'] = existing_data.index.values + 1
         ids = ids[1:]
 
     with keep.presenting():
@@ -806,8 +802,13 @@ def possession_parser_loop(year, big_pbp, big_pap):
             if error_counter >= 5:
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
+                    combined_new['team_1_players'] = combined_new['team_1_players'].astype(str)
+                    combined_new['team_2_players'] = combined_new['team_2_players'].astype(str)
                     if existing_data is not None:
-                        all_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+                        existing_data['team_1_players'] = existing_data['team_1_players'].astype(str)
+                        existing_data['team_2_players'] = existing_data['team_2_players'].astype(str)
+                        all_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                             ignore_index=True).drop_duplicates()
                     else:
                         all_data = combined_new[columns]
                     all_data.drop_duplicates(inplace=True)
@@ -828,13 +829,18 @@ def possession_parser_loop(year, big_pbp, big_pap):
                 print(f"IE: Game {game_id} does not exist")
             except ValueError:
                 print(f"VE: Game {game_id} does not exist")
-            except KeyError:
-                print(f"KE: Game {game_id} does not exist")
+            except KeyError as k:
+                print(f"KE: {k} for game id {game_id}")
 
+    existing_data['team_1_players'] = existing_data['team_1_players'].astype(str)
+    existing_data['team_2_players'] = existing_data['team_2_players'].astype(str)
     if new_data_frames:
         combined_new = pd.concat(new_data_frames, ignore_index=True)
+        combined_new['team_1_players'] = combined_new['team_1_players'].astype(str)
+        combined_new['team_2_players'] = combined_new['team_2_players'].astype(str)
         if existing_data is not None:
-            existing_data = pd.concat([existing_data[columns], combined_new[columns]], ignore_index=True).drop_duplicates()
+            existing_data = pd.concat([existing_data[columns], combined_new[columns]],
+                                      ignore_index=True).drop_duplicates()
         else:
             existing_data = combined_new[columns]
 
@@ -843,7 +849,7 @@ def possession_parser_loop(year, big_pbp, big_pap):
 
     # Forward fill the NA values for the players who are on the court
     poss[columns] = \
-        poss[columns].fillna(method="ffill")
+        poss[columns].ffill()
 
     poss = poss.drop_duplicates()
 
@@ -859,8 +865,8 @@ def possession_parser_loop(year, big_pbp, big_pap):
         if pd.isna(poss.at[i, 'possession_start']) and poss.at[i - 1, 'possession_end'] >= poss.at[i, 'sec']:
             poss.at[i, 'possession_start'] = poss.at[i - 1, 'possession_start']
             poss.at[i, 'possession_end'] = poss.at[i - 1, 'possession_end']
-            poss.at[i, 'team1_points'] = poss.at[i - 1, 'team1_points']
-            poss.at[i, 'team2_points'] = poss.at[i - 1, 'team2_points']
+            poss.at[i, 'team_1_points'] = poss.at[i - 1, 'team_1_points']
+            poss.at[i, 'team_2_points'] = poss.at[i - 1, 'team_2_points']
             poss.at[i, 'possession_id'] = poss.at[i - 1, 'possession_id']
 
     save_file(poss, dirname, filename)
@@ -1077,4 +1083,4 @@ def get_all_data(year):
     get_nba_schedule(year)
     base_pbp = scrape_nba_pbp(year)
     base_pap = pap_loop(year, base_pbp)
-    possession_parser_loop(base_pbp, base_pbp, base_pap)
+    possession_parser_loop(year, base_pbp, base_pap)
