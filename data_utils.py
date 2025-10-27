@@ -8,6 +8,19 @@ import time
 import ast
 import math
 import pbp_utils
+import numpy as np
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
+import pyautogui
+import time
+from datetime import datetime, date
 
 # Headers for API request
 header_data = {
@@ -25,6 +38,20 @@ header_data = {
 }
 
 
+def normalize_keys(obj):
+    if isinstance(obj, dict):
+        new_dict = {}
+        for k, v in obj.items():
+            if not isinstance(k, (str, int, float, bool, type(None))):
+                k = str(k)
+            new_dict[k] = normalize_keys(v)
+        return new_dict
+    elif isinstance(obj, list):
+        return [normalize_keys(i) for i in obj]
+    else:
+        return obj
+
+
 def save_file(data, directory, filename):
     cwd = Path.cwd()
     data_pack_dir = cwd / directory
@@ -37,6 +64,7 @@ def save_file(data, directory, filename):
             full_path = Path(full_path).stem + '.csv'
         data.to_csv(full_path, index=False)
     elif isinstance(data, (dict, list)):
+        data = normalize_keys(data)
         if not str(full_path).lower().endswith('.json'):
             full_path = Path(full_path).stem + '.json'
         with open(full_path, 'w') as f:
@@ -59,6 +87,16 @@ def play_by_play_url(game_id_str):
     return f"https://stats.nba.com/stats/playbyplayv2/?gameId={game_id_str}&startPeriod=0&endPeriod=14"
 
 
+def get_nba_team_id_map():
+    return {'ATL': '1610612737', 'BKN': '1610612751', 'BOS': '1610612738', 'CHA': '1610612766', 'CHI': '1610612741',
+            'CLE': '1610612739', 'DAL': '1610612742', 'DEN': '1610612743', 'DET': '1610612765', 'GSW': '1610612744',
+            'HOU': '1610612745', 'IND': '1610612754', 'LAC': '1610612746', 'LAL': '1610612747', 'MEM': '1610612763',
+            'MIA': '1610612748', 'MIL': '1610612749', 'MIN': '1610612750', 'NOP': '1610612740', 'NYK': '1610612752',
+            'OKC': '1610612760', 'ORL': '1610612753', 'PHI': '1610612755', 'PHX': '1610612756', 'POR': '1610612757',
+            'SAC': '1610612758', 'SAS': '1610612759', 'TOR': '1610612761', 'UTA': '1610612762', 'WAS': '1610612764',
+            }
+
+
 def extract_data(url, error_counter=0):
     """
     Extract the data stored at a specific URL
@@ -66,6 +104,8 @@ def extract_data(url, error_counter=0):
     ----------
     url : String
         The connection URL
+    error_counter : int
+        Counts number of errors
 
     Returns
     -------
@@ -95,6 +135,73 @@ def extract_data(url, error_counter=0):
     return frame
 
 
+def get_nba_schedule(year):
+    dirname = "DataPack"
+    filename = f"nba_schedule_{year}.json"
+    filename_full = Path.cwd() / dirname / filename
+    if os.path.isfile(filename_full):
+        return
+
+    team_id_map = get_nba_team_id_map()
+    team_ids = list(team_id_map.values())
+    schedule = {}
+
+    driver = webdriver.Chrome()
+
+    for tid in team_ids:
+        try:
+            driver.get(f"https://www.nba.com/team/{tid}/schedule")  # Example team; replace dynamically if needed
+
+            # Wait for table whose class starts with Crom_Body
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//tbody[starts-with(@class, 'Crom_body')]"))
+            )
+
+            # Locate all table rows within that table
+            rows = driver.find_elements(By.XPATH, "//tbody[starts-with(@class, 'Crom_body')]//tr")
+
+            for row in rows:
+                game_id = row.get_attribute("data-game-id")
+                if not game_id:
+                    continue  # skip header or malformed rows
+
+                # Get the first <td> (contains text like "Oct 7")
+                tds = row.find_elements(By.TAG_NAME, "td")
+                if not tds:
+                    continue
+
+                date_text = tds[0].text.strip()
+                month_str = date_text.split()[0]
+
+                if month_str.lower() in ("oct", "nov", "dec"):
+                    actual_year = year
+                else:
+                    actual_year = year + 1
+
+                try:
+                    # Parse "Oct 7" into a date object using the given year
+                    date_obj = datetime.strptime(f"{date_text} {actual_year}", "%b %d %Y").date()
+                except ValueError:
+                    # If parsing fails (e.g., blank cell), skip
+                    continue
+
+                if date_obj not in schedule:
+                    schedule[date_obj] = []
+
+                if game_id not in schedule[date_obj] and game_id.startswith('002'):
+                    schedule[date_obj].append(game_id)
+
+                # Delete useless ones
+                if len(schedule[date_obj]) == 0:
+                    del schedule[date_obj]
+        except Exception as e:
+            print(f"Error!: {e}")
+        time.sleep(2)
+
+    save_file(schedule, dirname, filename)
+    driver.quit()
+
+
 def get_nba_game_ids(year):
     id_getter = {2020: ("00220", (1, 1081)),
                  2021: ("00221", (1, 1231)),
@@ -103,16 +210,30 @@ def get_nba_game_ids(year):
                  2024: ("00224", (1, 1231)),
                  2025: ("00225", (1, 1231))}
 
-    dict_val = id_getter.get(year)
     beginning_string = "00" + str(year)[0] + str(year)[2:]
-    id1 = 1
-    id2 = 1231
-    if dict_val is not None:
-        beginning_string = dict_val[0]
-        id1 = dict_val[1][0]
-        id2 = dict_val[1][1]
 
-    return beginning_string, id1, id2
+    schedule_path = Path.cwd() / "DataPack" / f"nba_schedule_{year}.json"
+
+    with open(schedule_path, "r") as f:
+        schedule = json.load(f)
+
+    # Convert back to time type
+    schedule = {
+        datetime.strptime(k, "%Y-%m-%d").date(): v
+        for k, v in schedule.items()
+    }
+
+    schedule = dict(sorted(schedule.items(), key=lambda x: x[0]))
+
+    today = date.today()
+
+    # Filter: only include dates before today
+    past_games = {k: v for k, v in schedule.items() if k < today}
+
+    # Flatten all game id lists into one
+    all_game_ids = [gid for ids in past_games.values() for gid in ids]
+
+    return beginning_string, all_game_ids
 
 
 def scrape_nba_pbp(year):
@@ -128,12 +249,12 @@ def scrape_nba_pbp(year):
 
     with keep.presenting():
         # game_id starting string. This changes from year-to-year.
-        beginning_string, id1, id2 = get_nba_game_ids(year)
+        beginning_string, ids = get_nba_game_ids(year)
 
-        game_id = beginning_string + "00001"
+        game_id = ids[0]
 
         dirname = Path.cwd() / "DataPack"
-        file_short = f"{year}_reg_pbp.csv"
+        file_short = f"reg_pbp_{year}.csv"
 
         existing_file = dirname / file_short
 
@@ -143,13 +264,15 @@ def scrape_nba_pbp(year):
 
         if os.path.isfile(existing_file):
             existing_data = pd.read_csv(existing_file)
-            id1 = existing_data['GAME_ID'].astype(str).str[-5:].astype(int).max() + 1
+            existing_game_ids = existing_data["GAME_ID"].drop_duplicates().tolist()
+            existing_game_ids = ["00" + str(item) if type(item) is not str else str(item) for item in existing_game_ids]
+            ids = [gid for gid in ids if gid not in existing_game_ids]
 
         if existing_data is None:
             existing_data = extract_data(play_by_play_url(game_id))
-            id1 += 1
+            ids = ids[1:]
 
-        for x in range(id1, id2):
+        for x in range(len(ids)):
             if error_counter >= 5:
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
@@ -165,7 +288,10 @@ def scrape_nba_pbp(year):
             time.sleep(3)
 
             # Update the game id depending on x
-            game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            # This has been changed to read straight from the schedule so may not need these
+            # 0 adding shenanigans
+            # game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            game_id = ids[x]
             try:
                 # Extract the pbp data
                 holder_play_by_play = extract_data(play_by_play_url(game_id))
@@ -235,12 +361,12 @@ def players_at_period(pbp, game_id):
     play_by_play = pbp.loc[pbp['GAME_ID'] == int(game_id)]
     play_by_play.loc[:, 'EVENTNUM'] = play_by_play.index.values
 
-    substitutionsOnly = play_by_play[play_by_play['EVENTMSGTYPE'] == 8][
+    substitutions_only = play_by_play[play_by_play['EVENTMSGTYPE'] == 8][
         ['PERIOD', 'EVENTNUM', 'PLAYER1_ID', 'PLAYER2_ID']]
-    substitutionsOnly.columns = ['PERIOD', 'EVENTNUM', 'OUT', 'IN']
+    substitutions_only.columns = ['PERIOD', 'EVENTNUM', 'OUT', 'IN']
 
-    subs_in = split_subs(substitutionsOnly, 'IN')
-    subs_out = split_subs(substitutionsOnly, 'OUT')
+    subs_in = split_subs(substitutions_only, 'IN')
+    subs_out = split_subs(substitutions_only, 'OUT')
 
     full_subs = pd.concat([subs_out, subs_in], axis=0).reset_index()[['PLAYER_ID', 'PERIOD', 'EVENTNUM', 'SUB']]
     first_event_of_period = full_subs.loc[full_subs.groupby(by=['PERIOD', 'PLAYER_ID'])['EVENTNUM'].idxmin()]
@@ -284,8 +410,8 @@ def players_at_period(pbp, game_id):
 
 
 def pap_loop(year, pbp):
-    beginning_string, id1, id2 = get_nba_game_ids(year)
-    game_id = beginning_string + "00001"
+    beginning_string, ids = get_nba_game_ids(year)
+    game_id = ids[0]
 
     pap_file_dir = Path.cwd() / "DataPack"
     pap_file_short = f"pap_{year}.csv"
@@ -299,14 +425,16 @@ def pap_loop(year, pbp):
 
     if os.path.isfile(pap_file_full):
         existing_data = pd.read_csv(pap_file_full)[columns]
-        id1 = existing_data['GAME_ID'].astype(str).str[-5:].astype(int).max() + 1
+        existing_game_ids = existing_data["GAME_ID"].drop_duplicates().tolist()
+        existing_game_ids = ["00" + str(item) if type(item) is not str else str(item) for item in existing_game_ids]
+        ids = [gid for gid in ids if gid not in existing_game_ids]
 
     if existing_data is None:
         existing_data = players_at_period(pbp, game_id)[columns]
-        id1 += 1
+        ids = ids[1:]
 
     with keep.presenting():
-        for x in range(id1, id2):
+        for x in range(len(ids)):
             if error_counter >= 5:
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
@@ -321,10 +449,10 @@ def pap_loop(year, pbp):
                     all_data['TEAM_2_PLAYERS'] = all_data['TEAM_2_PLAYERS'].map(ast.literal_eval)
                     save_file(all_data, pap_file_dir, pap_file_short)
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
-                                 f"Max gid hit: {id1-1}. Writing current data and stopping...")
+                                 f"Max gid hit: {x-1}. Writing current data and stopping...")
 
             time.sleep(3)
-            game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            game_id = ids[x]
             try:
                 # Extract the pbp data
                 holder_pap = players_at_period(pbp, game_id)
@@ -344,7 +472,7 @@ def pap_loop(year, pbp):
                 print("Game does not exist")
             except ValueError:
                 error_counter += 1
-                print("Value Error/Missing Game")
+                print(f"Value Error/Missing Game for game id: {game_id}")
 
     if new_data_frames:
         combined_new = pd.concat(new_data_frames, ignore_index=True)
@@ -447,7 +575,6 @@ def is_end_of_possession(ind, row, rows):
            pbp_utils.is_make_and_not_and_1(ind, row, rows) or pbp_utils.is_end_of_period(row)
 
 
-# The main function of our tutorial, the method to group events by possession
 def parse_possessions(sub_map, rows):
     # we will have a list of possessions and each possession will be a list of events
     possessions = []
@@ -471,8 +598,6 @@ def parse_possessions(sub_map, rows):
 
 # We need to count up each team's points from a possession
 def count_points(possession):
-    # points will be a map where the key is the team id and the value is the number of points scored in that
-    # possesion
     points = {}
     for p in possession:
         if pbp_utils.is_made_shot(p) or (not pbp_utils.is_miss(p) and pbp_utils.is_free_throw(p)):
@@ -615,7 +740,7 @@ def pos_parser(big_pbp, big_pap, game_id):
     # convert dataframe into a list of rows. I know there is a better way to do this,
     # but this is the first thing I thought of.
     pbp_rows = list(play_by_play.iterrows())
-    possessions = parse_possessions(pbp_rows)
+    possessions = parse_possessions(sub_map, pbp_rows)
 
     # Build a list of parsed possession objects
     parsed_possessions = []
@@ -648,9 +773,10 @@ def pc_to_sec(row):
 def possession_parser_loop(year, big_pbp, big_pap):
     # game_id starting string. This changes from year-to-year.
     # game_id = id_getter[year][0] + "000" + str(id_getter[year][1][0]-1)
-    beginning_string, id1, id2 = get_nba_game_ids(year)
-    x = 1
-    game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+    beginning_string, ids = get_nba_game_ids(year)
+    # x = 1
+    # game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+    game_id = ids[0]
 
     dirname = Path.cwd() / "DataPack"
     filename = f"full_reg_pbp_{year}.csv"
@@ -667,14 +793,16 @@ def possession_parser_loop(year, big_pbp, big_pap):
 
     if os.path.isfile(full_filename):
         existing_data = pd.read_csv(full_filename)[columns]
-        id1 = existing_data['GAME_ID'].astype(str).str[-5:].astype(int).max() + 1
+        existing_game_ids = existing_data["GAME_ID"].drop_duplicates().tolist()
+        existing_game_ids = ["00" + str(item) if type(item) is not str else str(item) for item in existing_game_ids]
+        ids = [gid for gid in ids if gid not in existing_game_ids]
 
     if existing_data is None:
         existing_data = players_at_period(big_pbp, game_id)[columns]
-        id1 += 1
+        ids = ids[1:]
 
     with keep.presenting():
-        for x in range(id1, id2):
+        for x in range(len(ids)):
             if error_counter >= 5:
                 if new_data_frames:
                     combined_new = pd.concat(new_data_frames, ignore_index=True)
@@ -687,7 +815,8 @@ def possession_parser_loop(year, big_pbp, big_pap):
                 raise IndexError("Too many consecutive errors! Wrong game/s indexed?\n"
                                  "Writing current data and stopping...")
             # Update the game id depending on x
-            game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            # game_id = beginning_string + "".join(["0" for y in range(5 - len(str(x)))]) + str(x)
+            game_id = ids[x]
             try:
                 # Extract the pbp data
                 holder_poss = pos_parser(big_pbp, big_pap, game_id)
@@ -739,7 +868,213 @@ def possession_parser_loop(year, big_pbp, big_pap):
     return poss
 
 
+def scrape_espn_data(year):
+    game_dates = []
+    months = ['0' + str(x) if len(str(x)) == 1 else str(x) for x in range(10, 12)]
+    days = ['0' + str(x) if len(str(x)) == 1 else str(x) for x in range(1, 32)]
+
+    # Add a date range
+    for m in months:
+        for d in days:
+            link = str(year) + m + d
+            if 20231113 >= int(link) >= 20231111:
+                game_dates.append(link)
+
+    ist_dates = ['20231103', '20231110', '20231114', '20231117', '20231121', '20231124', '20231128', '20231204',
+                 '20231205'
+                 '20231207', '20231209']
+
+    # service = Service(ChromeDriverManager().install())
+    # driver = webdriver.Chrome(service=service)
+    driver = webdriver.Chrome()
+    hrefs = {}
+
+    for game_date in game_dates:
+        hrefs[game_date] = []
+        link = "https://www.espn.com/nba/scoreboard/_/date/" + game_date
+        print(link)
+
+        driver.get(link)
+        wait = WebDriverWait(driver, 10)  # Maximum wait time of 10 seconds
+        time.sleep(2)
+
+        pyautogui.hotkey('command', 'option', 'i')
+
+        xpath = '//div[contains(@class, "ScoreCell--md")]'
+
+        score_cells = None
+
+        try:
+            score_cells = wait.until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+        except TimeoutException:
+            no_games = driver.find_elements(By.CLASS_NAME, 'clr-gray-05')
+            print(no_games)
+            if len(no_games) != 0:
+                del hrefs[game_date]
+                pyautogui.hotkey('command', 'option', 'i')
+                continue
+
+        try:
+            # Iterate through each instance and get the first link
+            for score_cell in score_cells:
+                # Find the first link within the current instance
+                link = score_cell.find_element_by_tag_name("a")
+                # Do something with the link, for example, print its href attribute
+                hrefs[game_date].append(link.get_attribute("href"))
+            pyautogui.hotkey('command', 'option', 'i')
+
+        except StaleElementReferenceException:
+            no_games = driver.find_elements(By.CLASS_NAME, 'clr-gray-05')
+            print(no_games)
+            if len(no_games) != 0:
+                del hrefs[game_date]
+                pyautogui.hotkey('command', 'option', 'i')
+                continue
+
+    print(hrefs)
+    driver.quit()
+
+    data = pd.read_csv("/Users/jakesanghavi/PycharmProjects/NBA/Data/2023_espn_wp.csv")
+    data_reg_id = data.loc[data['GAME_ID'] >= 22300061]['GAME_ID'].max() + 1
+    data_ist_id = data.loc[data['GAME_ID'] < 22300061]['GAME_ID'].max() + 1
+
+    # service = Service(ChromeDriverManager().install())
+    # driver = webdriver.Chrome(service=service)
+
+    driver = webdriver.Chrome()
+
+    game_id_norm = '00' + str(data_reg_id)
+    game_id_ist = '00' + str(data_ist_id)
+
+    df_list = []
+
+    with keep.presenting():
+        for game_date in list(hrefs.keys()):
+            for href in hrefs[game_date]:
+                print(href)
+                driver.get(href)
+
+                wait = WebDriverWait(driver, 10)  # Maximum wait time of 10 seconds
+
+                win_probability_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "Win Probability")]'))
+                )
+                win_probability_button.click()
+
+                g_element = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'g[class="recharts-layer recharts-line"]'))
+                )
+
+                try:
+                    path_element = g_element.find_element(By.TAG_NAME, 'path')
+                    d_attribute = path_element.get_attribute('d')
+                #         d_attribute = driver.execute_script("return arguments[0].getAttribute('d');", path_element)
+                except StaleElementReferenceException:
+                    path_element = g_element.find_element(By.TAG_NAME, 'path')
+                    d_attribute = path_element.get_attribute('d')
+
+                span_elements = driver.find_elements(By.XPATH, "//a[@data-testid='prism-linkbase']//span")
+
+                away_tm = span_elements[0].text
+                home_tm = span_elements[1].text
+
+                path_segments = d_attribute[1:].replace('C',
+                                                        ',')  # Skip the first element as it is before the first 'C'
+
+                data_array = np.fromstring(path_segments, sep=',')
+
+                # Reshape the array to have two columns
+                reshaped_array = data_array.reshape(-1, 2)
+
+                iteration_df = pd.DataFrame(data=reshaped_array, columns=['time', 'wp_h'])
+                iteration_df['GAME_DATE'] = game_date
+                iteration_df['away_tm'] = away_tm
+                iteration_df['home_tm'] = home_tm
+
+                if game_date in ist_dates:
+                    iteration_df['GAME_ID'] = game_id_ist
+                    game_id_ist = "00" + str(int(game_id_ist) + 1)
+                else:
+                    iteration_df['GAME_ID'] = game_id_norm
+                    game_id_norm = "00" + str(int(game_id_norm) + 1)
+
+                # Append the current iteration's DataFrame to the main DataFrame
+                df_list.append(iteration_df)
+
+    driver.quit()
+
+    df_new = pd.concat(df_list, ignore_index=True, axis=0)
+    tm_changes = {'GS': 'GSW', 'NO': 'NOP', 'NY': 'NYK', 'SA': 'SAS', 'UTAH': 'UTA'}
+    df_new['away_tm'] = df_new['away_tm'].map(tm_changes).fillna(df_new['away_tm'])
+    df_new['home_tm'] = df_new['home_tm'].map(tm_changes).fillna(df_new['home_tm'])
+
+    data = pd.concat([data, df_new])
+
+    dirname = "DataPack"
+    filename = f"espn_wp_{year}.csv"
+    save_file(data, dirname, filename)
+
+
+def combine_espn_data(year):
+    dirname = "DataPack"
+    filename = f"full_reg_pbp_{year}.csv"
+    poss_path = Path.cwd() / dirname / filename
+    poss = pd.read_csv(poss_path)
+    poss['sec'] = poss['sec'].astype(float)
+    espn_filename = f"espn_wp_{year}.csv"
+    espn_path = Path.cwd() / dirname / espn_filename
+    espn = pd.read_csv(espn_path)
+    grouped_poss = poss.groupby('GAME_ID')
+
+    poss['GAME_DATE'] = np.nan
+    poss['away_tm'] = ''
+    poss['home_tm'] = ''
+    poss['road_wp'] = np.nan
+    poss['home_wp'] = np.nan
+    poss['road_wp_prev'] = np.nan
+    poss['home_wp_prev'] = np.nan
+    poss['road_wpa'] = np.nan
+    poss['home_wpa'] = np.nan
+
+    # Iterate through each group
+    for group_name, group_df in grouped_poss:
+        # Iterate through rows within the group and fill NA values in columns c and d
+        holder = espn.loc[espn['GAME_ID'] == group_df['GAME_ID'].iloc[0]]
+        group_df = group_df.drop(
+            columns=['GAME_DATE', 'away_tm', 'home_tm', 'home_wp', 'road_wp', 'home_wp_prev', 'road_wp_prev',
+                     'home_wpa', 'road_wpa'])
+
+        max_time = group_df['sec'].max()
+        max_espn_time = holder['time'].max()
+        holder['home_wp'] = round((holder['wp_h'] - 5) / (205 - 5), 3)
+        holder['road_wp'] = round(1 - holder['home_wp'], 3)
+        holder['sec'] = round(max_time * (holder['time'] - 5) / (max_espn_time - 5), 3)
+
+        holder = holder.drop(columns=['wp_h', 'time'])
+
+        group_df['copy_index'] = group_df.index
+        group_df = group_df.merge(holder, on=['GAME_ID', 'sec'], how='left')
+
+        group_df['home_wp_prev'] = group_df['home_wp'].shift(1)
+        group_df['road_wp_prev'] = group_df['road_wp'].shift(1)
+        group_df['home_wpa'] = round(group_df['home_wp'] - group_df['home_wp_prev'], 3)
+        group_df['road_wpa'] = round(group_df['road_wp'] - group_df['road_wp_prev'], 3)
+
+        # Update the original 'poss' dataframe with the modified values in the current group
+        group_df.index = group_df['copy_index']
+        group_df = group_df.drop(columns=['copy_index'])
+        poss.loc[group_df.index] = group_df
+
+    poss[['GAME_DATE', 'away_tm', 'home_tm', 'road_wp', 'home_wp']] = poss[
+        ['GAME_DATE', 'away_tm', 'home_tm', 'road_wp', 'home_wp']].ffill()
+
+    filename_out = f"complete_pbp_{year}.csv"
+
+    save_file(poss, dirname, filename_out)
+
+
 def get_all_data(year):
+    get_nba_schedule(year)
     base_pbp = scrape_nba_pbp(year)
     base_pap = pap_loop(year, base_pbp)
     possession_parser_loop(base_pbp, base_pbp, base_pap)
