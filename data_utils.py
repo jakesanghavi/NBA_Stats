@@ -313,8 +313,10 @@ def get_bbref_data(year):
     columns = []
     rows = []
 
+    season = year + 1
+
     # Request the page with a GET request
-    r = http.request('GET', player_totals_page(year))
+    r = http.request('GET', player_totals_page(season))
     # Use BS4 to parse the page
     soup = bs4.BeautifulSoup(r.data, 'html.parser')
     # Get all <table> elements
@@ -330,7 +332,7 @@ def get_bbref_data(year):
     frame.columns = columns
 
     # Request the page with a GET request
-    r = http.request('GET', player_advanced_page(year))
+    r = http.request('GET', player_advanced_page(season))
     # Use BS4 to parse the page
     soup = bs4.BeautifulSoup(r.data, 'html.parser')
     # Get all <table> elements
@@ -1224,7 +1226,7 @@ def scrape_espn_data(year, pbp_data):
         max_existing_date = pd.to_datetime(existing_data['GAME_DATE']).dt.date.max()
 
     espn_schedule_filename = f"espn_schedule_{year}.json"
-    full_espn_file = Path.cwd() / dirname / "ESPN"/ espn_schedule_filename
+    full_espn_file = Path.cwd() / dirname / "ESPN" / espn_schedule_filename
 
     if os.path.isfile(full_espn_file):
         with open(full_espn_file, "r") as f:
@@ -1300,12 +1302,13 @@ def scrape_espn_data(year, pbp_data):
     unique_games = unique_games.merge(team_ids_inverted, on=['team2'])
 
     nba_team_name_map = get_nba_team_abbr_map()
-    team_names_inverted = pd.DataFrame(list(nba_team_name_map.items()),
-                                       columns=['team1_abbr', 'team1_name'])
+    nba_team_name_map_inverted = {v: k for k, v in nba_team_name_map.items()}
+    team_names = pd.DataFrame(list(nba_team_name_map.items()),
+                              columns=['team1_abbr', 'team1_name'])
 
-    unique_games = unique_games.merge(team_names_inverted, on=['team1_abbr'])
-    team_names_inverted.columns = ['team2_abbr', 'team2_name']
-    unique_games = unique_games.merge(team_names_inverted, on=['team2_abbr'])
+    unique_games = unique_games.merge(team_names, on=['team1_abbr'])
+    team_names.columns = ['team2_abbr', 'team2_name']
+    unique_games = unique_games.merge(team_names, on=['team2_abbr'])
 
     with keep.presenting():
         for game_date in list(hrefs.keys()):
@@ -1351,11 +1354,14 @@ def scrape_espn_data(year, pbp_data):
                 iteration_df = pd.DataFrame(data=reshaped_array, columns=['time', 'wp_h'])
                 iteration_df['GAME_DATE'] = game_date
                 iteration_df['away_tm'] = away_tm
+                iteration_df['away_tm_abbr'] = nba_team_name_map_inverted[away_tm]
                 iteration_df['home_tm'] = home_tm
+                iteration_df['home_tm_abbr'] = nba_team_name_map_inverted[home_tm]
 
                 iteration_df['GAME_ID'] = unique_games[(unique_games['Date'].astype(str) == str(game_date)) &
                                                        (unique_games['team1_name'].isin([away_tm, home_tm])) &
-                                                       (unique_games['team2_name'].isin([away_tm, home_tm]))]['GAME_ID'].iloc[0]
+                                                       (unique_games['team2_name'].isin([away_tm, home_tm]))][
+                    'GAME_ID'].iloc[0]
 
                 # Append the current iteration's DataFrame to the main DataFrame
                 df_list.append(iteration_df)
@@ -1388,13 +1394,15 @@ def combine_espn_data(year):
     poss = pd.read_csv(poss_path)
     poss['sec'] = poss['sec'].astype(float)
     espn_filename = f"espn_wp_{year}.csv"
-    espn_path = Path.cwd() / dirname / "ESPN"/ espn_filename
+    espn_path = Path.cwd() / dirname / "ESPN" / espn_filename
     espn = pd.read_csv(espn_path)
     grouped_poss = poss.groupby('GAME_ID')
 
     poss['GAME_DATE'] = np.nan
     poss['away_tm'] = ''
+    poss['away_tm_abbr'] = ''
     poss['home_tm'] = ''
+    poss['home_tm_abbr'] = ''
     poss['road_wp'] = np.nan
     poss['home_wp'] = np.nan
     poss['road_wp_prev'] = np.nan
@@ -1407,7 +1415,7 @@ def combine_espn_data(year):
         # Iterate through rows within the group and fill NA values in columns c and d
         holder = espn.loc[espn['GAME_ID'] == group_df['GAME_ID'].iloc[0]]
         group_df = group_df.drop(
-            columns=['GAME_DATE', 'away_tm', 'home_tm', 'home_wp', 'road_wp', 'home_wp_prev', 'road_wp_prev',
+            columns=['GAME_DATE', 'away_tm', 'away_tm_abbr', 'home_tm', 'home_tm_abbr', 'home_wp', 'road_wp', 'home_wp_prev', 'road_wp_prev',
                      'home_wpa', 'road_wpa'])
 
         max_time = group_df['sec'].max()
@@ -1431,8 +1439,8 @@ def combine_espn_data(year):
         group_df = group_df.drop(columns=['copy_index'])
         poss.loc[group_df.index] = group_df
 
-    poss[['GAME_DATE', 'away_tm', 'home_tm', 'road_wp', 'home_wp']] = poss[
-        ['GAME_DATE', 'away_tm', 'home_tm', 'road_wp', 'home_wp']].ffill()
+    poss[['GAME_DATE', 'away_tm', 'away_tm_abbr', 'home_tm', 'home_tm_abbr', 'road_wp', 'home_wp']] = poss[
+        ['GAME_DATE', 'away_tm', 'away_tm_abbr', 'home_tm', 'home_tm_abbr', 'road_wp', 'home_wp']].ffill()
 
     filename_out = f"complete_pbp_{year}.csv"
 
