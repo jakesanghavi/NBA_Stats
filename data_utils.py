@@ -4,23 +4,21 @@ from pathlib import Path
 import json
 from wakepy import keep
 import os
-import time
 import ast
 import math
 import pbp_utils
 import numpy as np
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 import pyautogui
 import time
 from datetime import datetime, date
+import urllib3
+from unidecode import unidecode
+import bs4
 
 # Headers for API request
 header_data = {
@@ -54,7 +52,14 @@ def normalize_keys(obj):
 
 def save_file(data, directory, filename):
     cwd = Path.cwd()
-    data_pack_dir = cwd / directory
+
+    directory = Path(directory)
+
+    # Handle case where directory already includes cwd or is absolute
+    if directory.is_absolute() and str(directory).startswith(str(cwd)):
+        data_pack_dir = directory
+    else:
+        data_pack_dir = cwd / directory
 
     data_pack_dir.mkdir(parents=True, exist_ok=True)
     full_path = data_pack_dir / filename
@@ -110,6 +115,26 @@ def get_nba_team_abbr_map():
             }
 
 
+def player_stats_url(year):
+    """
+    Get the endpoint for a given season
+    Parameters
+    ----------
+    year : String
+        The season you are interested in
+
+    Returns
+    -------
+    The NBA Stats endpoint for that season
+    """
+    return f"https://stats.nba.com/stats/leaguedashplayerstats?College=&Conference=&Country=&DateFrom=&DateTo" \
+           f"=&Division=&DraftPick=&DraftYear=&GameScope=&GameSegment=&Height=&LastNGames=0&LeagueID=00&Location" \
+           f"=&MeasureType=Base&Month=0&OpponentTeamID=0&Outcome=&PORound=0&PaceAdjust=N&PerMode=Totals&Period=0" \
+           f"&PlayerExperience=&PlayerPosition=&PlusMinus=N&Rank=N&Season=" \
+           f"{year}&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&StarterBench=&TeamID=0&TwoWay=0" \
+           f"&VsConference=&VsDivision=&Weight="
+
+
 def extract_data(url, error_counter=0):
     """
     Extract the data stored at a specific URL
@@ -146,6 +171,239 @@ def extract_data(url, error_counter=0):
             print("Request timed out. Skipping...")
         return None
     return frame
+
+
+def extract_data_urllib(http_client, url):
+    """
+    Extract data from the API endpoint
+    Parameters
+    ----------
+    http_client : urllib3.PoolManager object
+    url : String
+        The URL you are interested in
+
+    Returns
+    -------
+    The dataframe containing the stats of all players for the season you specified.
+    """
+    # Call to the GET endpoint
+    r = http_client.request('GET', url, headers=header_data)
+    # Get the JSON
+    resp = json.loads(r.data)
+    # Convert the json into a pandas dataframe
+    results = resp['resultSets'][0]
+    headers = results['headers']
+    rows = results['rowSet']
+    data_frame = pd.DataFrame(rows)
+    data_frame.columns = headers
+    return data_frame
+
+
+def get_nba_stats_data(year):
+    client = urllib3.PoolManager()
+    season = str(year) + '-' + str(year)[2:]
+
+    frame = extract_data_urllib(client, player_stats_url(season))
+    frame = frame.dropna(subset=['PLAYER_ID'])
+    dirname = "DataPack"
+    mini_dir = "NBAStats"
+    dirname = Path.cwd() / dirname / mini_dir
+    filename = f"nba_stats_{year}.csv"
+
+    save_file(frame, dirname, filename)
+
+
+def player_totals_page(year):
+    """
+    Get the URL in BB Ref for the season you are interested in
+    Parameters
+    ----------
+    year : String
+        The year you are interested in
+
+    Returns
+    -------
+    The URL for the season
+    """
+    return f"https://www.basketball-reference.com/leagues/NBA_{year}_totals.html"
+
+
+def player_advanced_page(year):
+    """
+    Get the URL in BB Ref for the season you are interested in
+    Parameters
+    ----------
+    year : String
+        The year you are interested in
+
+    Returns
+    -------
+    The URL for the season
+    """
+    return f"https://www.basketball-reference.com/leagues/NBA_{year}_advanced.html"
+
+
+def extract_column_names(table):
+    """
+    Get the column names from the BB Ref HTML table
+    Parameters
+    ----------
+    table : table header (<th> tag)
+
+    Returns
+    -------
+    The column names
+    """
+    cols = [col["aria-label"] for col in table.find_all("thead")[0].find_all("th")][1:]
+    cols.append("id")
+    return cols
+
+
+def extract_rows(table):
+    """
+    Get the rows from the HTML table (get the <tr>'s)
+    Parameters
+    ----------
+    table : HTML table (<table>)
+
+    Returns
+    -------
+    All rows from the table, properly parsed
+    """
+
+    # Get all rows in the table
+    trs = table.find_all("tbody")[0].find_all("tr")
+    # Parse each row and return
+    parsed_rows = [parse_row(row) for row in trs if parse_row(row) is not None and len(parse_row(row)) > 0]
+    return parsed_rows
+
+
+def parse_row(row):
+    """
+    Parse a given row
+    Parameters
+    ----------
+    row : row of an HTML table (<tr>)
+
+    Returns
+    -------
+    The data from the row
+    """
+    # Get all table data elements
+    other_data = row.find_all("td")
+
+    # If there is no data, return an empty list
+    if len(other_data) == 0:
+        return []
+
+    page_links = other_data[0].find_all("a")
+
+    if page_links is None or len(page_links) == 0:
+        return None
+
+    # Get the player ids from the URLs associated with them
+    ids = page_links[0]["href"].split("/")[-1].replace(".html", "")
+    row_data = [td.string for td in other_data]
+    row_data.append(ids)
+    return row_data
+
+
+def get_bbref_data(year):
+    http = urllib3.PoolManager()
+    columns = []
+    rows = []
+
+    # Request the page with a GET request
+    r = http.request('GET', player_totals_page(year))
+    # Use BS4 to parse the page
+    soup = bs4.BeautifulSoup(r.data, 'html.parser')
+    # Get all <table> elements
+    f = soup.find_all("table")
+
+    # Get the columns and rows
+    if len(f) > 0:
+        columns = extract_column_names(f[0])
+        rows = extract_rows(f[0])
+
+    # Convert your data to a pandas dataframe and return it
+    frame = pd.DataFrame(rows)
+    frame.columns = columns
+
+    # Request the page with a GET request
+    r = http.request('GET', player_advanced_page(year))
+    # Use BS4 to parse the page
+    soup = bs4.BeautifulSoup(r.data, 'html.parser')
+    # Get all <table> elements
+    f = soup.find_all("table")
+
+    # Get the columns and rows
+    if len(f) > 0:
+        columns = extract_column_names(f[0])
+        rows = extract_rows(f[0])
+
+    # Convert your data to a pandas dataframe and return it
+    frame2 = pd.DataFrame(rows)
+    frame2.columns = columns
+
+    frame = frame.merge(frame2, on=['Player', 'Pos', 'Age', 'Team', 'id', 'G', 'MP'])
+
+    dirname = "DataPack"
+    mini_dir = "BBRef"
+    dirname = Path.cwd() / dirname / mini_dir
+    filename = f"bbref_totals_{year}.csv"
+
+    save_file(frame, dirname, filename)
+
+
+def deduplicate_traded_players(group):
+    if len(group) > 1:
+        return group[group["Team"] == "TOT"]
+    return group
+
+
+def remove_accents(a):
+    return unidecode(a)
+
+
+def id_matching(year):
+    dirname = "DataPack"
+    nba_stats_dirname = "NBAStats"
+    bbref_dirname = "BBRef"
+    nba_stats_path = Path.cwd() / dirname / nba_stats_dirname / f"nba_stats_{year}.csv"
+    bbref_path = Path.cwd() / dirname / bbref_dirname / f"bbref_totals_{year}.csv"
+    bbref_data = pd.read_csv(bbref_path)
+    bbref_data['Player'] = bbref_data['Player'].str.replace(".", "", regex=False)
+    bbref_data["Player"] = bbref_data["Player"].apply(remove_accents)
+
+    # read out stats.nba.com data
+    nba_data = pd.read_csv(nba_stats_path)
+    # convert the player id from an int to a string
+    nba_data["PLAYER_ID"] = nba_data["PLAYER_ID"].astype(str)
+    nba_data["PLAYER_NAME"] = nba_data["PLAYER_NAME"].str.replace(".", "", regex=False)
+    nba_data["PLAYER_NAME"] = nba_data["PLAYER_NAME"].apply(remove_accents)
+
+    bbref_base_data = bbref_data[["Player", "id", "Pos", "Team", "FGA", "TRB", "AST"]].groupby(
+        by="id").apply(deduplicate_traded_players)
+
+    # take the player name, id, and fields we will use for deduplication from stats.nba.com data
+    nba_base_data = nba_data[["PLAYER_ID", "PLAYER_NAME", "FGA", "REB", "AST"]]
+
+    # Perform a full outer join on the two dataframes. This allows us to get all of the exact matches
+    name_matches = bbref_base_data.merge(nba_base_data,
+                                         left_on=["Player", "FGA", "TRB", "AST"],
+                                         right_on=["PLAYER_NAME", "FGA", "REB", "AST"], how="outer")
+
+    # take all the exact matches and rename the columns, we only care about player name and id from each source
+    name_matches_ids = name_matches.dropna()
+    name_matches_ids = name_matches_ids[["Player", "id", "PLAYER_NAME", "PLAYER_ID", "Pos"]]
+    name_matches_ids.columns = ["bbref_name", "bbref_id", "nba_name", "nba_id", 'position']
+
+    name_matches_ids['bbref_name'] = name_matches_ids['bbref_name'].str.lower()
+    name_matches_ids['nba_name'] = name_matches_ids['nba_name'].str.lower()
+
+    filename = f"id_matches_{year}.csv"
+
+    save_file(name_matches_ids, dirname, filename)
 
 
 def get_nba_schedule(year):
@@ -889,7 +1147,7 @@ def possession_parser_loop(year, big_pbp, big_pap):
 
 
 def get_espn_schedule(year):
-    schedule_path = Path.cwd() / "DataPack" / f"nba_schedule_{year}.json"
+    schedule_path = Path.cwd() / "DataPack" / "ESPN" / f"nba_schedule_{year}.json"
 
     with open(schedule_path, "r") as f:
         schedule = json.load(f)
@@ -950,6 +1208,7 @@ def get_espn_schedule(year):
     driver.quit()
 
     dirname = "DataPack"
+    dirname = Path.cwd() / dirname / "ESPN"
     filename = f"espn_schedule_{year}.json"
     save_file(hrefs, dirname, filename)
     return hrefs
@@ -957,7 +1216,7 @@ def get_espn_schedule(year):
 
 def scrape_espn_data(year, pbp_data):
     dirname = "DataPack"
-    existing_file = Path.cwd() / dirname / f"espn_wp_{year}.csv"
+    existing_file = Path.cwd() / dirname / "ESPN" / f"espn_wp_{year}.csv"
     existing_data = None
     max_existing_date = date(1800, 1, 1)
     if os.path.isfile(existing_file):
@@ -966,7 +1225,7 @@ def scrape_espn_data(year, pbp_data):
         max_existing_date = pd.to_datetime(existing_data['GAME_DATE']).dt.date.max()
 
     espn_schedule_filename = f"espn_schedule_{year}.json"
-    full_espn_file = Path.cwd() / dirname / espn_schedule_filename
+    full_espn_file = Path.cwd() / dirname / "ESPN"/ espn_schedule_filename
 
     if os.path.isfile(full_espn_file):
         with open(full_espn_file, "r") as f:
@@ -1117,6 +1376,7 @@ def scrape_espn_data(year, pbp_data):
         df_new = pd.concat([existing_data, df_new], axis=0)
 
     dirname = "DataPack"
+    dirname = Path.cwd() / dirname / "ESPN"
     filename = f"espn_wp_{year}.csv"
     save_file(df_new, dirname, filename)
 
@@ -1129,7 +1389,7 @@ def combine_espn_data(year):
     poss = pd.read_csv(poss_path)
     poss['sec'] = poss['sec'].astype(float)
     espn_filename = f"espn_wp_{year}.csv"
-    espn_path = Path.cwd() / dirname / espn_filename
+    espn_path = Path.cwd() / dirname / "ESPN"/ espn_filename
     espn = pd.read_csv(espn_path)
     grouped_poss = poss.groupby('GAME_ID')
 
@@ -1181,6 +1441,9 @@ def combine_espn_data(year):
 
 
 def get_all_data(year, espn):
+    get_nba_stats_data(year)
+    get_bbref_data(year)
+    id_matching(year)
     get_nba_schedule(year)
     base_pbp = scrape_nba_pbp(year)
     base_pap = pap_loop(year, base_pbp)
