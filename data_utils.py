@@ -1221,7 +1221,6 @@ def scrape_espn_data(year, pbp_data):
     max_existing_date = date(1800, 1, 1)
     if os.path.isfile(existing_file):
         existing_data = pd.read_csv(existing_file)
-        print(existing_data['GAME_DATE'])
         max_existing_date = pd.to_datetime(existing_data['GAME_DATE']).dt.date.max()
 
     espn_schedule_filename = f"espn_schedule_{year}.json"
