@@ -101,13 +101,14 @@ def get_nba_team_abbr_map():
     return {'ATL': 'Atlanta Hawks', 'BKN': 'Brooklyn Nets', 'BOS': 'Boston Celtics', 'CHA': 'Charlotte Hornets',
             'CHI': 'Chicago Bulls', 'CLE': 'Cleveland Cavaliers', 'DAL': 'Dallas Mavericks', 'DEN': 'Denver Nuggets',
             'DET': 'Detroit Pistons', 'GSW': 'Golden State Warriors', 'HOU': 'Houston Rockets', 'IND': 'Indiana Pacers',
-            'LAC': 'Los Angeles Clippers', 'LAL': 'Los Angeles Lakers', 'MEM': 'Memphis Grizzlies', 'MIA': 'Miami Heat',
+            'LAC': 'LA Clippers', 'LAL': 'Los Angeles Lakers', 'MEM': 'Memphis Grizzlies', 'MIA': 'Miami Heat',
             'MIL': 'Milwaukee Bucks', 'MIN': 'Minnesota Timberwolves', 'NOP': 'New Orleans Pelicans',
             'NYK': 'New York Knicks', 'OKC': 'Oklahoma City Thunder', 'ORL': 'Orlando Magic',
-            'PHI': 'Philadelphia 76ers', 'PHX': 'Phoenix Suns', 'POR': 'Portland Trailblazers',
+            'PHI': 'Philadelphia 76ers', 'PHX': 'Phoenix Suns', 'POR': 'Portland Trail Blazers',
             'SAC': 'Sacramento Kings', 'SAS': 'San Antonio Spurs', 'TOR': 'Toronto Raptors', 'UTA': 'Utah Jazz',
             'WAS': 'Washington Wizards'
             }
+
 
 def extract_data(url, error_counter=0):
     """
@@ -956,6 +957,14 @@ def get_espn_schedule(year):
 
 def scrape_espn_data(year, pbp_data):
     dirname = "DataPack"
+    existing_file = Path.cwd() / dirname / f"espn_wp_{year}.csv"
+    existing_data = None
+    max_existing_date = date(1800, 1, 1)
+    if os.path.isfile(existing_file):
+        existing_data = pd.read_csv(existing_file)
+        print(existing_data['GAME_DATE'])
+        max_existing_date = pd.to_datetime(existing_data['GAME_DATE']).dt.date.max()
+
     espn_schedule_filename = f"espn_schedule_{year}.json"
     full_espn_file = Path.cwd() / dirname / espn_schedule_filename
 
@@ -966,20 +975,17 @@ def scrape_espn_data(year, pbp_data):
     else:
         hrefs = get_espn_schedule(year)
 
+    hrefs = {
+        datetime.strptime(k, "%Y-%m-%d").date(): v
+        for k, v in hrefs.items()
+    }
+
+    today = date.today()
+
+    hrefs = {str(k): v for k, v in hrefs.items() if today > k > max_existing_date}
+
     driver = webdriver.Chrome()
     df_list = []
-
-    # existing_file = Path.cwd() / dirname / f"espn_wp_{year}.csv"
-    #
-    # if os.path.isfile(existing_file):
-    #     existing_data = pd.read_csv(existing_file)
-    #     existing_game_ids = existing_data["GAME_ID"].drop_duplicates().tolist()
-    #     existing_game_ids = ["00" + str(item) if type(item) is not str else str(item) for item in existing_game_ids]
-    #     ids = [gid for gid in ids if gid not in existing_game_ids]
-    #
-    # if existing_data is None:
-    #     existing_data = extract_data(play_by_play_url(game_id))
-    #     ids = ids[1:]
 
     teams_per_game = (
         pbp_data
@@ -1010,25 +1016,33 @@ def scrape_espn_data(year, pbp_data):
     with open(schedule_path, "r") as f:
         schedule = json.load(f)
 
+    schedule = {
+        datetime.strptime(k, "%Y-%m-%d").date(): v
+        for k, v in schedule.items()
+    }
+
     schedule_merger = pd.DataFrame([
         {'Date': k, 'GAME_ID': v}
         for k, values in schedule.items()
         for v in values
     ])
 
+    schedule_merger = schedule_merger[(schedule_merger['Date'] < today) & (schedule_merger['Date'] > max_existing_date)]
+
     schedule_merger['GAME_ID'] = schedule_merger['GAME_ID'].astype(int)
 
     unique_games = unique_games.merge(schedule_merger, on=['GAME_ID'])
 
     nba_id_map = get_nba_team_id_map()
-    team_ids_inverted = pd.DataFrame({v: k for k, v in nba_id_map.items()}, columns=['team1', 'team1_abbr'])
+    nba_id_map = {v: k for k, v in nba_id_map.items()}
+    team_ids_inverted = pd.DataFrame(list(nba_id_map.items()), columns=['team1', 'team1_abbr'])
     team_ids_inverted['team1'] = team_ids_inverted['team1'].astype(int)
     unique_games = unique_games.merge(team_ids_inverted, on=['team1'])
     team_ids_inverted.columns = ['team2', 'team2_abbr']
     unique_games = unique_games.merge(team_ids_inverted, on=['team2'])
 
     nba_team_name_map = get_nba_team_abbr_map()
-    team_names_inverted = pd.DataFrame({v: k for k, v in nba_team_name_map.items()},
+    team_names_inverted = pd.DataFrame(list(nba_team_name_map.items()),
                                        columns=['team1_abbr', 'team1_name'])
 
     unique_games = unique_games.merge(team_names_inverted, on=['team1_abbr'])
@@ -1062,8 +1076,11 @@ def scrape_espn_data(year, pbp_data):
 
                 span_elements = driver.find_elements(By.XPATH, "//a[@data-testid='prism-linkbase']//span")
 
-                away_tm = span_elements[0].text
-                home_tm = span_elements[1].text
+                span_texts = [e.text for e in span_elements]
+                span_texts = [e for e in span_texts if e is not None and len(e.strip()) > 0]
+
+                away_tm = span_texts[0]
+                home_tm = span_texts[1]
 
                 path_segments = d_attribute[1:].replace('C',
                                                         ',')  # Skip the first element as it is before the first 'C'
@@ -1079,20 +1096,25 @@ def scrape_espn_data(year, pbp_data):
                 iteration_df['home_tm'] = home_tm
 
                 iteration_df['GAME_ID'] = unique_games[(unique_games['Date'].astype(str) == str(game_date)) &
-                                                       ((unique_games['team1_name'] == away_tm) |
-                                                        (unique_games['team1_name'] == home_tm)) &
-                                                       ((unique_games['team2_name'] == away_tm) |
-                                                        (unique_games['team2_name'] == home_tm))]['GAME_ID'].iloc[0]
+                                                       (unique_games['team1_name'].isin([away_tm, home_tm])) &
+                                                       (unique_games['team2_name'].isin([away_tm, home_tm]))]['GAME_ID'].iloc[0]
 
                 # Append the current iteration's DataFrame to the main DataFrame
                 df_list.append(iteration_df)
 
     driver.quit()
 
+    if len(df_list) == 0:
+        print("No new games!")
+        return
+
     df_new = pd.concat(df_list, ignore_index=True, axis=0)
     tm_changes = {'GS': 'GSW', 'NO': 'NOP', 'NY': 'NYK', 'SA': 'SAS', 'UTAH': 'UTA'}
     df_new['away_tm'] = df_new['away_tm'].map(tm_changes).fillna(df_new['away_tm'])
     df_new['home_tm'] = df_new['home_tm'].map(tm_changes).fillna(df_new['home_tm'])
+
+    if existing_data is not None:
+        df_new = pd.concat([existing_data, df_new], axis=0)
 
     dirname = "DataPack"
     filename = f"espn_wp_{year}.csv"
@@ -1100,6 +1122,7 @@ def scrape_espn_data(year, pbp_data):
 
 
 def combine_espn_data(year):
+    pd.options.mode.chained_assignment = None
     dirname = "DataPack"
     filename = f"full_reg_pbp_{year}.csv"
     poss_path = Path.cwd() / dirname / filename
@@ -1157,8 +1180,12 @@ def combine_espn_data(year):
     save_file(poss, dirname, filename_out)
 
 
-def get_all_data(year):
+def get_all_data(year, espn):
     get_nba_schedule(year)
     base_pbp = scrape_nba_pbp(year)
     base_pap = pap_loop(year, base_pbp)
     possession_parser_loop(year, base_pbp, base_pap)
+
+    if espn:
+        scrape_espn_data(year, base_pbp)
+        combine_espn_data(year)
